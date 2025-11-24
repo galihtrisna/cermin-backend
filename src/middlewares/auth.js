@@ -1,12 +1,18 @@
+// src/middlewares/auth.js
 const jwt = require("jsonwebtoken");
 
 function extractToken(req) {
   const authHeader = req.headers?.authorization || req.headers?.Authorization;
-  if (authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+  if (
+    authHeader &&
+    typeof authHeader === "string" &&
+    authHeader.startsWith("Bearer ")
+  ) {
     return authHeader.substring(7);
   }
-  // Fallback to cookie used by Supabase Auth Helpers
-  const cookieToken = req.cookies?.["sb-access-token"] || req.cookies?.["access_token"];
+  // Fallback to cookie used by Supabase Auth Helpers (kalau kepakai)
+  const cookieToken =
+    req.cookies?.["sb-access-token"] || req.cookies?.["access_token"];
   return cookieToken || null;
 }
 
@@ -67,8 +73,9 @@ function requireRoles(allowedRoles = []) {
   };
 }
 
-const requireUser = requireRoles(["user", "admin"]);
-const requireAdmin = requireRoles(["admin"]);
+// disesuaikan dengan role: superadmin | admin | staff
+const requireUser = requireRoles(["staff", "admin", "superadmin"]);
+const requireAdmin = requireRoles(["admin", "superadmin"]);
 
 module.exports = {
   requireAuth,
@@ -76,4 +83,3 @@ module.exports = {
   requireUser,
   requireAdmin,
 };
-

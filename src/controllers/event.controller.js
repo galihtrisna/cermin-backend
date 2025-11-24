@@ -30,11 +30,18 @@ exports.getAllEvent = async (req, res) => {
     const loc = (req.query.location || "").trim();
 
     // 3) Sorting (whitelist)
-    const SORTABLE = new Set(["datetime", "title", "price", "capacity", "status"]);
+    const SORTABLE = new Set([
+      "datetime",
+      "title",
+      "price",
+      "capacity",
+      "status",
+    ]);
     const sortBy = SORTABLE.has((req.query.sort_by || "").trim())
       ? req.query.sort_by.trim()
       : "datetime";
-    const sortDir = (req.query.sort_dir || "asc").toLowerCase() === "desc" ? "desc" : "asc";
+    const sortDir =
+      (req.query.sort_dir || "asc").toLowerCase() === "desc" ? "desc" : "asc";
 
     // 4) Base query + count
     let query = supabase.from("event").select("*", { count: "exact" });
@@ -52,7 +59,9 @@ exports.getAllEvent = async (req, res) => {
     if (loc) query = query.ilike("location", `%${loc}%`);
 
     // 6) Sorting + pagination
-    query = query.order(sortBy, { ascending: sortDir === "asc" }).range(from, to);
+    query = query
+      .order(sortBy, { ascending: sortDir === "asc" })
+      .range(from, to);
 
     const { data: events, count, error } = await query;
     if (error) throw error;
@@ -101,10 +110,22 @@ exports.getEventById = async (req, res) => {
       .eq("id", id)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Supabase: no rows found => PGRST116
+      if (error.code === "PGRST116") {
+        return res.status(404).json({ message: "Event not found" });
+      }
 
-    if (!event)
+      console.error(error);
+      return res.status(500).json({
+        message: "Error while getting event by ID",
+        error: error.message,
+      });
+    }
+
+    if (!event) {
       return res.status(404).json({ message: "Event not found" });
+    }
 
     res.status(200).json({
       message: "Get event by ID successfully",
@@ -125,7 +146,8 @@ exports.getEventById = async (req, res) => {
  */
 exports.createEvent = async (req, res) => {
   try {
-    const { title, description, datetime, location, capacity, price, status } = req.body;
+    const { title, description, datetime, location, capacity, price, status } =
+      req.body;
 
     const { data, error } = await supabase
       .from("event")
@@ -157,11 +179,20 @@ exports.createEvent = async (req, res) => {
 exports.updateEvent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, datetime, location, capacity, price, status } = req.body;
+    const { title, description, datetime, location, capacity, price, status } =
+      req.body;
 
     const { data, error } = await supabase
       .from("event")
-      .update({ title, description, datetime, location, capacity, price, status })
+      .update({
+        title,
+        description,
+        datetime,
+        location,
+        capacity,
+        price,
+        status,
+      })
       .eq("id", id)
       .select()
       .single();

@@ -1,10 +1,14 @@
 const eventRoutes = require("./event.route");
 const participantRoutes = require("./participant.route");
 const paymentRoutes = require("./payment.route");
+const organizerRoutes = require("./organizer.route");
+const authRoutes = require("./auth.route");
 
 module.exports = (app) => {
   app.use("/api/events", eventRoutes);
   app.use("/api/participants", participantRoutes);
   app.use("/api/payments", paymentRoutes);
+  app.use("/api/", authRoutes);
+  app.use("/api/", organizerRoutes);
 };
 

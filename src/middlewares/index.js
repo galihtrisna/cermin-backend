@@ -1,4 +1,10 @@
-const { requireAuth, requireRoles, requireUser, requireAdmin } = require("./auth");
+// src/middlewares/index.js
+const {
+  requireAuth,
+  requireRoles,
+  requireUser,
+  requireAdmin,
+} = require("./auth");
 
 module.exports = {
   requireAuth,
@@ -6,4 +12,3 @@ module.exports = {
   requireUser,
   requireAdmin,
 };
-
