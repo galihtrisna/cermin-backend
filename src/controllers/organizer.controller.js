@@ -1,10 +1,6 @@
-// src/controllers/organizer.controller.js
 const supabase = require("../utils/supabase");
 
-/**
- * POST /organizers/apply
- * Body: { organizer_name, description, website?, contact_phone? }
- */
+// POST /api/organizers/apply
 exports.applyOrganizer = async (req, res) => {
   try {
     const userId = req.userId;
@@ -15,12 +11,11 @@ exports.applyOrganizer = async (req, res) => {
     }
 
     if (!organizer_name || !description) {
-      return res
-        .status(400)
-        .json({ message: "Nama penyelenggara dan deskripsi wajib diisi" });
+      return res.status(400).json({
+        message: "Nama penyelenggara dan deskripsi wajib diisi",
+      });
     }
 
-    // Cek sudah punya pengajuan sebelumnya
     const { data: existing, error: existingError } = await supabase
       .from("organizers")
       .select("id, status")
@@ -33,9 +28,9 @@ exports.applyOrganizer = async (req, res) => {
     }
 
     if (existing && existing.status === "pending") {
-      return res
-        .status(409)
-        .json({ message: "Pengajuan sebagai penyelenggara masih pending" });
+      return res.status(409).json({
+        message: "Pengajuan sebagai penyelenggara masih pending",
+      });
     }
 
     const { data, error } = await supabase
@@ -53,7 +48,9 @@ exports.applyOrganizer = async (req, res) => {
 
     if (error) {
       console.error(error);
-      return res.status(500).json({ message: "Gagal mengajukan penyelenggara" });
+      return res
+        .status(500)
+        .json({ message: "Gagal mengajukan penyelenggara" });
     }
 
     return res.status(201).json({

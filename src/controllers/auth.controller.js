@@ -1,4 +1,3 @@
-// src/controllers/auth.controller.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const supabase = require("../utils/supabase");
@@ -15,7 +14,7 @@ function generateAccessToken(user) {
   const payload = {
     sub: user.id,
     email: user.email,
-    role: user.role, // bisa null
+    role: user.role || null,
   };
 
   const token = jwt.sign(
@@ -30,9 +29,13 @@ function generateAccessToken(user) {
   return { token, expireMs };
 }
 
-/**
- * POST /register
- */
+function publicUser(user) {
+  if (!user) return null;
+  const { password_hash, ...rest } = user;
+  return rest;
+}
+
+// POST /api/register
 exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -40,40 +43,34 @@ exports.register = async (req, res) => {
     if (!name || !email || !password) {
       return res
         .status(400)
-        .json({ message: "name, email dan password wajib diisi" });
+        .json({ message: "Nama, email, dan password wajib diisi." });
     }
 
-    const { data: existing, error: existingError } = await supabase
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const { data, error } = await supabase
       .from("users")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (existingError) {
-      console.error(existingError);
-      return res.status(500).json({ message: "Gagal cek email" });
-    }
-
-    if (existing) {
-      return res.status(409).json({ message: "Email sudah terdaftar" });
-    }
-
-    const password_hash = await bcrypt.hash(password, 10);
-
-    const { data: user, error: insertError } = await supabase
-      .from("users")
-      .insert({ name, email, password_hash })
-      .select("id, name, email, role, is_verified, created_at")
+      .insert({
+        name,
+        email,
+        password_hash: passwordHash,
+      })
+      .select("*")
       .single();
 
-    if (insertError) {
-      console.error(insertError);
-      return res.status(500).json({ message: "Gagal membuat user" });
+    if (error) {
+      console.error(error);
+      if (error.code === "23505") {
+        return res
+          .status(409)
+          .json({ message: "Email sudah terdaftar, gunakan email lain." });
+      }
+      return res.status(500).json({ message: "Gagal mendaftar." });
     }
 
     return res.status(201).json({
-      message: "Register berhasil",
-      data: user,
+      message: "Registrasi berhasil",
+      data: publicUser(data),
     });
   } catch (error) {
     console.error("register error:", error);
@@ -81,9 +78,7 @@ exports.register = async (req, res) => {
   }
 };
 
-/**
- * POST /login
- */
+// POST /api/login
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -91,27 +86,28 @@ exports.login = async (req, res) => {
     if (!email || !password) {
       return res
         .status(400)
-        .json({ message: "email dan password wajib diisi" });
+        .json({ message: "Email dan password wajib diisi." });
     }
 
     const { data: user, error } = await supabase
       .from("users")
-      .select("id, name, email, password_hash, role, is_verified")
+      .select("*")
       .eq("email", email)
       .single();
 
     if (error || !user) {
       console.error(error);
-      return res.status(401).json({ message: "Email atau password salah" });
+      return res.status(401).json({ message: "Email atau password salah." });
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
-      return res.status(401).json({ message: "Email atau password salah" });
+      return res.status(401).json({ message: "Email atau password salah." });
     }
 
     const { token, expireMs } = generateAccessToken(user);
 
+    // optional cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -122,13 +118,7 @@ exports.login = async (req, res) => {
     return res.json({
       message: "Login berhasil",
       data: {
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          isVerified: user.is_verified,
-        },
+        user: publicUser(user),
         accessToken: token,
         expire: expireMs,
       },
@@ -139,116 +129,18 @@ exports.login = async (req, res) => {
   }
 };
 
-/**
- * DELETE /logout
- */
-exports.logout = async (_req, res) => {
+// DELETE /api/logout
+exports.logout = async (req, res) => {
   try {
     res.clearCookie("token");
-    return res.json({
-      message: "Logout berhasil",
-      data: { success: true },
-    });
+    return res.json({ message: "Logout berhasil" });
   } catch (error) {
     console.error("logout error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-/**
- * GET /users
- * optional: ?name=&email=
- */
-exports.getAllUsers = async (req, res) => {
-  try {
-    const { name = "", email = "" } = req.query;
-
-    let query = supabase
-      .from("users")
-      .select("id, name, email, role, is_verified, created_at")
-      .order("created_at", { ascending: false });
-
-    if (name) query = query.ilike("name", `%${name}%`);
-    if (email) query = query.ilike("email", `%${email}%`);
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Gagal mengambil data user" });
-    }
-
-    return res.json({
-      message: "Get all users successfully",
-      data,
-    });
-  } catch (error) {
-    console.error("getAllUsers error:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-/**
- * PATCH /users/:id
- * bisa update name, email, role
- */
-exports.updateUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, email, role } = req.body;
-
-    const payload = {};
-    if (name !== undefined) payload.name = name;
-    if (email !== undefined) payload.email = email;
-    if (role !== undefined) payload.role = role;
-
-    const { data, error } = await supabase
-      .from("users")
-      .update(payload)
-      .eq("id", id)
-      .select("id, name, email, role, is_verified")
-      .single();
-
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Gagal mengupdate user" });
-    }
-
-    return res.json({
-      message: "Update user successfully",
-      data,
-    });
-  } catch (error) {
-    console.error("updateUser error:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-/**
- * DELETE /users/:id
- */
-exports.deleteUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const { error } = await supabase.from("users").delete().eq("id", id);
-
-    if (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Gagal menghapus user" });
-    }
-
-    return res.json({
-      message: "Delete user successfully",
-      data: { id },
-    });
-  } catch (error) {
-    console.error("deleteUser error:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-// GET /users/admin
+// GET /api/users/admin  → current user info
 exports.getCurrentUserAdmin = async (req, res) => {
   try {
     const userId = req.userId;
@@ -259,7 +151,7 @@ exports.getCurrentUserAdmin = async (req, res) => {
 
     const { data: user, error } = await supabase
       .from("users")
-      .select("id, name, email, role, is_verified")
+      .select("id, name, email, role, is_verified, created_at")
       .eq("id", userId)
       .single();
 
@@ -278,6 +170,7 @@ exports.getCurrentUserAdmin = async (req, res) => {
   }
 };
 
+// PATCH /api/me/role  { role: "staff" | "admin" }
 exports.setMyRole = async (req, res) => {
   try {
     const userId = req.userId;
@@ -291,10 +184,9 @@ exports.setMyRole = async (req, res) => {
       return res.status(400).json({ message: "Role tidak valid" });
     }
 
-    // Ambil user sekarang
     const { data: current, error: currentError } = await supabase
       .from("users")
-      .select("id, name, email, role, is_verified")
+      .select("*")
       .eq("id", userId)
       .single();
 
@@ -303,7 +195,6 @@ exports.setMyRole = async (req, res) => {
       return res.status(500).json({ message: "Gagal mengambil user" });
     }
 
-    // Kalau role sudah ada dan bukan null, jangan diubah-ubah lagi
     if (current.role && current.role !== role) {
       return res.status(400).json({
         message:
@@ -315,7 +206,7 @@ exports.setMyRole = async (req, res) => {
       .from("users")
       .update({ role })
       .eq("id", userId)
-      .select("id, name, email, role, is_verified")
+      .select("*")
       .single();
 
     if (updateError) {
@@ -323,20 +214,19 @@ exports.setMyRole = async (req, res) => {
       return res.status(500).json({ message: "Gagal mengupdate role" });
     }
 
-    // Buat token baru dengan role yang sudah di-update
     const { token, expireMs } = generateAccessToken(updated);
 
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 1000 * 60 * 60,
+      maxAge: ACCESS_TOKEN_TTL_MS,
     });
 
     return res.json({
       message: "Role berhasil diupdate",
       data: {
-        user: updated,
+        user: publicUser(updated),
         accessToken: token,
         expire: expireMs,
       },
