@@ -3,19 +3,24 @@ const router = express.Router();
 const { eventController } = require("../controllers");
 const { requireUser, requireAdmin } = require("../middlewares");
 
-// GET /api/events
-router.get("/",eventController.getAllEvent);
+// ⚠️ URUTAN PENTING: route yang spesifik dulu, baru yang pakai :id
 
-// GET /api/events/:id
+// GET /api/events/mine  → event yang dimiliki user login
+router.get("/mine", requireUser, eventController.getMyEvents);
+
+// GET /api/events       → semua event (public / admin, terserah use-case)
+router.get("/", eventController.getAllEvent);
+
+// GET /api/events/:id   → detail event by id
 router.get("/:id", requireUser, eventController.getEventById);
 
-// POST /api/events
+// POST /api/events      → buat event baru (admin/organizer)
 router.post("/", requireAdmin, eventController.createEvent);
 
-// PUT /api/events/:id
+// PUT /api/events/:id   → update event
 router.put("/:id", requireAdmin, eventController.updateEvent);
 
-// DELETE /api/events/:id
+// DELETE /api/events/:id → hapus event
 router.delete("/:id", requireAdmin, eventController.deleteEvent);
 
 module.exports = router;

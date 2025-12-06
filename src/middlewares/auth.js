@@ -10,14 +10,21 @@ function extractToken(req) {
     return authHeader.substring(7);
   }
   const cookieToken =
-    req.cookies?.["sb-access-token"] || req.cookies?.["access_token"];
+    req.cookies?.["token"] ||
+    req.cookies?.["sb-access-token"] ||
+    req.cookies?.["access_token"];
   return cookieToken || null;
 }
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  process.env.SUPABASE_JWT_SECRET ||
+  process.env.SUPABASE_JWT ||
+  "";
 
 function verifySupabaseJwt(token) {
-  const secret = process.env.SUPABASE_JWT_SECRET || process.env.SUPABASE_JWT;
+  const secret = JWT_SECRET;
   if (!secret) {
-    const err = new Error("Missing SUPABASE_JWT_SECRET in environment");
+    const err = new Error("Missing JWT_SECRET in environment");
     err.code = "NO_JWT_SECRET";
     throw err;
   }

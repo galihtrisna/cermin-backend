@@ -97,6 +97,34 @@ exports.getAllEvent = async (req, res) => {
   }
 };
 
+exports.getMyEvents = async (req, res) => {
+  try {
+    const userId = req.userId; // dari middleware auth / JWT
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { data, error } = await supabase
+      .from("event")
+      .select("*")
+      .eq("owner_id", userId)
+      .order("datetime", { ascending: true });
+
+    if (error) throw error;
+
+    res.status(200).json({
+      message: "Get my events successfully",
+      data,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error while getting my events",
+      error: error.message,
+    });
+  }
+};
+
 /**
  * GET /events/:id
  * Ambil event berdasarkan ID
@@ -146,13 +174,27 @@ exports.getEventById = async (req, res) => {
  */
 exports.createEvent = async (req, res) => {
   try {
+    const userId = req.userId; // dari JWT
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const { title, description, datetime, location, capacity, price, status } =
       req.body;
 
     const { data, error } = await supabase
       .from("event")
       .insert([
-        { title, description, datetime, location, capacity, price, status },
+        {
+          title,
+          description,
+          datetime,
+          location,
+          capacity,
+          price,
+          status,
+          owner_id: userId, // 🔥 penting: set pemilik event
+        },
       ])
       .select()
       .single();
