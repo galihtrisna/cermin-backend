@@ -8,6 +8,8 @@ router.get("/:id", paymentController.getPaymentById);
 router.post("/", paymentController.createPayment); // auto hitung admin fee (return di response)
 router.put("/:id", paymentController.updatePayment);
 router.delete("/:id", paymentController.deletePayment);
+router.post("/qris", paymentController.createQrisPayment);
+router.post("/notification", paymentController.webhookHandler);
 
 module.exports = router;
     

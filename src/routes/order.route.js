@@ -22,7 +22,7 @@ router.get("/:id", requireAuth, orderController.getOrderById);
  * Membuat order baru.
  * Diakses oleh: User yang login.
  */
-router.post("/", requireAuth, orderController.createOrder);
+router.post("/", orderController.createOrder);
 
 /**
  * PUT /api/orders/:id

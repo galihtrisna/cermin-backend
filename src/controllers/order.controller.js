@@ -1,5 +1,5 @@
 const supabase = require("../utils/supabase");
-
+const { calculateAdminFee } = require("../utils/fees");
 /**
  * GET /orders
  * Query:
@@ -108,36 +108,91 @@ exports.getOrderById = async (req, res) => {
  */
 exports.createOrder = async (req, res) => {
   try {
-    const { event_id, participant_id, amount, status } = req.body;
-    if (!event_id || !participant_id)
-      return res.status(400).json({ message: "event_id and participant_id are required" });
+    const { event_id, name, email, phone } = req.body;
 
-    // ambil harga event kalau amount kosong
-    let finalAmount = amount;
-    if (finalAmount === undefined || finalAmount === null) {
-      const { data: ev, error: e1 } = await supabase
-        .from("event")
-        .select("price")
-        .eq("id", event_id)
+    // 1. Validasi Email Unik (Per Event) & Status Bayar
+    // Cari participant id dulu
+    const { data: existingUser } = await supabase
+      .from("participant")
+      .select("id")
+      .eq("email", email)
+      .single();
+
+    if (existingUser) {
+      // Cek apakah user ini punya order sukses di event ini
+      const { data: existingOrder } = await supabase
+        .from("order")
+        .select("id, status")
+        .eq("event_id", event_id)
+        .eq("participant_id", existingUser.id)
+        .or("status.eq.paid,status.eq.settlement") // Cek status paid/settlement
         .single();
-      if (e1 || !ev) return res.status(404).json({ message: "Event not found" });
-      finalAmount = ev.price ?? 0;
+
+      if (existingOrder) {
+        return res.status(400).json({
+          message: "Email ini sudah terdaftar dan lunas untuk event ini.",
+        });
+      }
     }
 
-    const payload = {
-      event_id,
-      participant_id,
-      amount: finalAmount,
-      status: status || "pending",
-    };
+    // 2. Insert/Get Participant
+    let participantId;
+    if (existingUser) {
+      participantId = existingUser.id;
+      // Update data terbaru (opsional)
+      await supabase
+        .from("participant")
+        .update({ name, phone })
+        .eq("id", participantId);
+    } else {
+      const { data: newUser, error: userError } = await supabase
+        .from("participant")
+        .insert([{ name, email, phone }])
+        .select()
+        .single();
+      
+      if (userError) throw userError;
+      participantId = newUser.id;
+    }
 
-    const { data, error } = await supabase.from("order").insert([payload]).select().single();
-    if (error) throw error;
+    // 3. Ambil Harga Event & Hitung Admin Fee
+    const { data: eventData } = await supabase
+      .from("event")
+      .select("price, title")
+      .eq("id", event_id)
+      .single();
 
-    res.status(201).json({ message: "Order created successfully", data });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Error while creating order", error: err.message });
+    if (!eventData) throw new Error("Event tidak ditemukan");
+
+    const price = parseFloat(eventData.price);
+    const adminFee = calculateAdminFee(price); // Pakai helper
+    const totalAmount = price + adminFee;
+
+    // 4. Buat Order
+    const { data: newOrder, error: orderError } = await supabase
+      .from("order")
+      .insert([
+        {
+          event_id,
+          participant_id: participantId,
+          price: price, // Harga asli event
+          amount: totalAmount, // Total yang harus dibayar (termasuk admin)
+          status: "pending",
+        },
+      ])
+      .select()
+      .single();
+
+    if (orderError) throw orderError;
+
+    res.status(201).json({
+      message: "Order created successfully",
+      data: newOrder,
+    });
+
+  } catch (error) {
+    console.error("createOrder error:", error);
+    res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
 
