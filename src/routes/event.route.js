@@ -12,7 +12,7 @@ router.get("/mine", requireUser, eventController.getMyEvents);
 router.get("/", eventController.getAllEvent);
 
 // GET /api/events/:id   → detail event by id
-router.get("/:id", requireUser, eventController.getEventById);
+router.get("/:id", eventController.getEventById);
 
 // POST /api/events      → buat event baru (admin/organizer)
 router.post("/", requireAdmin, eventController.createEvent);

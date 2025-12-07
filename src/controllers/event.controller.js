@@ -179,8 +179,19 @@ exports.createEvent = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { title, description, datetime, location, capacity, price, status } =
-      req.body;
+    const {
+      title,
+      description,
+      datetime,
+      location,
+      capacity,
+      price,
+      status,
+      subtitle,
+      duration,
+      benefits,
+      image,
+    } = req.body;
 
     const { data, error } = await supabase
       .from("event")
@@ -193,7 +204,11 @@ exports.createEvent = async (req, res) => {
           capacity,
           price,
           status,
-          owner_id: userId, // 🔥 penting: set pemilik event
+          owner_id: userId,
+          subtitle,
+          duration,
+          benefits,
+          image, // 🔥 penting: set pemilik event
         },
       ])
       .select()
@@ -238,11 +253,25 @@ exports.updateEvent = async (req, res) => {
     // 2. Validasi Kepemilikan (Authorization)
     // Boleh edit jika: Role Superadmin ATAU User ID sama dengan Owner ID
     if (userRole !== "superadmin" && existingEvent.owner_id !== userId) {
-      return res.status(403).json({ message: "Forbidden: Anda bukan pemilik event ini." });
+      return res
+        .status(403)
+        .json({ message: "Forbidden: Anda bukan pemilik event ini." });
     }
 
     // 3. Lakukan Update
-    const { title, description, datetime, location, capacity, price, status, image } = req.body;
+    const {
+      title,
+      description,
+      datetime,
+      location,
+      capacity,
+      price,
+      status,
+      subtitle,
+      duration,
+      benefits,
+      image,
+    } = req.body;
 
     const { data, error } = await supabase
       .from("event")
@@ -254,7 +283,10 @@ exports.updateEvent = async (req, res) => {
         capacity,
         price,
         status,
-        image // Pastikan kolom 'image' ada di tabel DB kamu
+        subtitle,
+        duration,
+        benefits,
+        image, // Pastikan kolom 'image' ada di tabel DB kamu
       })
       .eq("id", id)
       .select()
@@ -297,7 +329,9 @@ exports.deleteEvent = async (req, res) => {
     }
 
     if (userRole !== "superadmin" && existingEvent.owner_id !== userId) {
-      return res.status(403).json({ message: "Forbidden: Anda bukan pemilik event ini." });
+      return res
+        .status(403)
+        .json({ message: "Forbidden: Anda bukan pemilik event ini." });
     }
 
     // 2. Hapus
