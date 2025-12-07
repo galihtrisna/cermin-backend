@@ -18,9 +18,9 @@ router.get("/:id", requireUser, eventController.getEventById);
 router.post("/", requireAdmin, eventController.createEvent);
 
 // PUT /api/events/:id   → update event
-router.put("/:id", requireAdmin, eventController.updateEvent);
+router.put("/:id", requireUser, eventController.updateEvent);
 
 // DELETE /api/events/:id → hapus event
-router.delete("/:id", requireAdmin, eventController.deleteEvent);
+router.delete("/:id", requireUser, eventController.deleteEvent);
 
 module.exports = router;

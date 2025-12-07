@@ -221,8 +221,28 @@ exports.createEvent = async (req, res) => {
 exports.updateEvent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, datetime, location, capacity, price, status } =
-      req.body;
+    const userId = req.userId;
+    const userRole = req.role;
+
+    // 1. Cek dulu eventnya ada atau tidak
+    const { data: existingEvent, error: fetchError } = await supabase
+      .from("event")
+      .select("owner_id")
+      .eq("id", id)
+      .single();
+
+    if (fetchError || !existingEvent) {
+      return res.status(404).json({ message: "Event tidak ditemukan" });
+    }
+
+    // 2. Validasi Kepemilikan (Authorization)
+    // Boleh edit jika: Role Superadmin ATAU User ID sama dengan Owner ID
+    if (userRole !== "superadmin" && existingEvent.owner_id !== userId) {
+      return res.status(403).json({ message: "Forbidden: Anda bukan pemilik event ini." });
+    }
+
+    // 3. Lakukan Update
+    const { title, description, datetime, location, capacity, price, status, image } = req.body;
 
     const { data, error } = await supabase
       .from("event")
@@ -234,6 +254,7 @@ exports.updateEvent = async (req, res) => {
         capacity,
         price,
         status,
+        image // Pastikan kolom 'image' ada di tabel DB kamu
       })
       .eq("id", id)
       .select()
@@ -261,7 +282,25 @@ exports.updateEvent = async (req, res) => {
 exports.deleteEvent = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.userId;
+    const userRole = req.role;
 
+    // 1. Cek event & kepemilikan
+    const { data: existingEvent, error: fetchError } = await supabase
+      .from("event")
+      .select("owner_id")
+      .eq("id", id)
+      .single();
+
+    if (fetchError || !existingEvent) {
+      return res.status(404).json({ message: "Event tidak ditemukan" });
+    }
+
+    if (userRole !== "superadmin" && existingEvent.owner_id !== userId) {
+      return res.status(403).json({ message: "Forbidden: Anda bukan pemilik event ini." });
+    }
+
+    // 2. Hapus
     const { error } = await supabase.from("event").delete().eq("id", id);
 
     if (error) throw error;
