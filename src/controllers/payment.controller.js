@@ -1,6 +1,7 @@
 const supabase = require("../utils/supabase");
 const { calculateAdminFee } = require("../utils/fees");
 const midtransClient = require("midtrans-client"); // Pastikan sudah install midtrans-client
+const { sendTicketEmail } = require("../utils/emailService");
 
 // Inisialisasi Midtrans Core API
 const coreApi = new midtransClient.CoreApi({
@@ -42,9 +43,9 @@ exports.createQrisPayment = async (req, res) => {
 
     // 2. Parameter Midtrans
     const parameter = {
-      payment_type: "gopay",
-      gopay: {
-        enable_qr: true, // ← bagian terpenting
+      payment_type: "qris",
+      qris: {
+        acquirer: "gopay", // Menggunakan GoPay sebagai acquirer
       },
       transaction_details: {
         order_id: order.id,
@@ -99,7 +100,7 @@ exports.webhookHandler = async (req, res) => {
 
     let orderStatus = null;
 
-    // Logika Status Midtrans
+    // ... Logika Status Midtrans (tetap sama) ...
     if (transactionStatus == "capture") {
       if (fraudStatus == "challenge") {
         orderStatus = "challenge";
@@ -120,43 +121,85 @@ exports.webhookHandler = async (req, res) => {
       // 1. Update Order jadi PAID
       await supabase.from("order").update({ status: "paid" }).eq("id", orderId);
 
-      // 2. Buat Tiket Baru (PENTING!)
-      // Cek dulu biar gak duplikat tiket kalau webhook dikirim berkali-kali
+      // 2. Buat Tiket Baru
+      let ticketData = null;
       const { data: existingTicket } = await supabase
         .from("ticket")
-        .select("id")
+        .select("*")
         .eq("order_id", orderId)
         .single();
 
       if (!existingTicket) {
-        await supabase.from("ticket").insert([
-          {
-            order_id: orderId,
-            qr_token: `TCK-${orderId.substring(0, 8)}-${Date.now()}`,
-            qr_status: true,
-          },
-        ]);
+        const { data: newTicket } = await supabase
+          .from("ticket")
+          .insert([
+            {
+              order_id: orderId,
+              qr_token: `TCK-${orderId.substring(0, 8)}-${Date.now()}`,
+              qr_status: true,
+            },
+          ])
+          .select()
+          .single();
+        ticketData = newTicket;
+      } else {
+        ticketData = existingTicket;
       }
 
       // 3. Catat di Payment Log
-      // Cek payment log existing
+      let paymentData = null;
       const { data: existingLog } = await supabase
         .from("payment")
-        .select("id")
+        .select("*")
         .eq("order_id", orderId)
         .eq("status", "paid")
         .single();
 
       if (!existingLog) {
-        await supabase.from("payment").insert([
-          {
-            order_id: orderId,
-            midtrans_id: statusResponse.transaction_id,
-            channel: "qris",
-            status: "paid",
-            paid_at: new Date(),
-          },
-        ]);
+        const { data: newPayment } = await supabase
+          .from("payment")
+          .insert([
+            {
+              order_id: orderId,
+              midtrans_id: statusResponse.transaction_id,
+              channel: "qris",
+              status: "paid",
+              paid_at: new Date(),
+            },
+          ])
+          .select()
+          .single();
+        paymentData = newPayment;
+      } else {
+        paymentData = existingLog;
+      }
+
+      // ===============================================
+      // 4. KIRIM EMAIL TIKET (FITUR BARU)
+      // ===============================================
+      if (ticketData && paymentData) {
+        // Ambil data lengkap Order + Event + Participant
+        const { data: fullOrder } = await supabase
+          .from("order")
+          .select(
+            `
+            *,
+            event:event_id (title, datetime, location),
+            participant:participant_id (name, email, phone)
+          `
+          )
+          .eq("id", orderId)
+          .single();
+
+        if (fullOrder) {
+          // Fire and forget (tidak perlu await agar webhook cepat merespon OK ke midtrans)
+          // atau gunakan await jika ingin memastikan log error tertangkap di sini
+          sendTicketEmail(fullOrder, ticketData, paymentData)
+            .then(() => console.log(`Email sent for order ${orderId}`))
+            .catch((err) =>
+              console.error(`Email failed for order ${orderId}`, err)
+            );
+        }
       }
     } else if (orderStatus === "failed") {
       await supabase
