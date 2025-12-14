@@ -271,6 +271,7 @@ exports.updateEvent = async (req, res) => {
       duration,
       benefits,
       image,
+      cert_background, // [FIX] Tambahkan field ini agar sertifikat bisa disimpan
     } = req.body;
 
     const { data, error } = await supabase
@@ -286,7 +287,8 @@ exports.updateEvent = async (req, res) => {
         subtitle,
         duration,
         benefits,
-        image, // Pastikan kolom 'image' ada di tabel DB kamu
+        image,
+        cert_background, // [FIX] Masukkan ke payload update
       })
       .eq("id", id)
       .select()
@@ -364,40 +366,55 @@ exports.addEventStaff = async (req, res) => {
     const ownerId = req.userId; // ID Admin yang login
 
     // 1. Cek kepemilikan event
-    const { data: event } = await supabase.from("event").select("owner_id").eq("id", id).single();
-    if (!event) return res.status(404).json({ message: "Event tidak ditemukan" });
-    
+    const { data: event } = await supabase
+      .from("event")
+      .select("owner_id")
+      .eq("id", id)
+      .single();
+    if (!event)
+      return res.status(404).json({ message: "Event tidak ditemukan" });
+
     // Hanya owner atau superadmin yang boleh add staff
-    if (event.owner_id !== ownerId && req.role !== 'superadmin') {
+    if (event.owner_id !== ownerId && req.role !== "superadmin") {
       return res.status(403).json({ message: "Forbidden" });
     }
 
     // 2. Cari User berdasarkan email
-    const { data: user } = await supabase.from("users").select("id, role").eq("email", email).single();
+    const { data: user } = await supabase
+      .from("users")
+      .select("id, role")
+      .eq("email", email)
+      .single();
 
     if (!user) {
-      return res.status(404).json({ message: "Email belum terdaftar di sistem." });
+      return res
+        .status(404)
+        .json({ message: "Email belum terdaftar di sistem." });
     }
 
-    if (user.role !== 'staff') {
-      return res.status(400).json({ message: "User tersebut bukan Staff (Role user salah)." });
+    if (user.role !== "staff") {
+      return res
+        .status(400)
+        .json({ message: "User tersebut bukan Staff (Role user salah)." });
     }
 
     // 3. Masukkan ke tabel event_staff
     const { error: insertError } = await supabase.from("event_staff").insert({
       event_id: id,
-      user_id: user.id
+      user_id: user.id,
     });
 
     if (insertError) {
-      if (insertError.code === '23505') { // Unique violation
-        return res.status(400).json({ message: "Staff sudah terdaftar di event ini." });
+      if (insertError.code === "23505") {
+        // Unique violation
+        return res
+          .status(400)
+          .json({ message: "Staff sudah terdaftar di event ini." });
       }
       throw insertError;
     }
 
     res.status(201).json({ message: "Staff berhasil ditambahkan." });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Internal Server Error" });
@@ -418,7 +435,7 @@ exports.getEventStaffList = async (req, res) => {
 
     if (error) throw error;
     res.json({ message: "Success", data });
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
@@ -430,10 +447,13 @@ exports.getEventStaffList = async (req, res) => {
 exports.removeEventStaff = async (req, res) => {
   try {
     const { staffId } = req.params; // ID dari tabel event_staff
-    const { error } = await supabase.from("event_staff").delete().eq("id", staffId);
+    const { error } = await supabase
+      .from("event_staff")
+      .delete()
+      .eq("id", staffId);
     if (error) throw error;
     res.json({ message: "Staff dihapus dari event." });
-  } catch(err) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
@@ -454,42 +474,11 @@ exports.getStaffAssignedEvents = async (req, res) => {
     if (error) throw error;
 
     // Flatten data
-    const events = data.map(item => item.event);
+    const events = data.map((item) => item.event);
 
     res.json({ message: "Success", data: events });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: err.message });
-  }
-};
-exports.updateEvent = async (req, res) => {
-  const { id } = req.params;
-  const updates = req.body; // Data yang dikirim dari frontend
-
-  try {
-    // 1. Lakukan Update di Supabase
-    const { data, error } = await supabase
-      .from("event")
-      .update(updates) // Update sesuai data yang dikirim
-      .eq("id", id)    // Cari berdasarkan ID
-      .select()        // Minta data terbaru setelah update
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    if (!data) {
-      return res.status(404).json({ message: "Event tidak ditemukan saat update." });
-    }
-
-    return res.status(200).json({
-      message: "Event berhasil diupdate",
-      data: data
-    });
-
-  } catch (error) {
-    console.error("Error update event:", error);
-    return res.status(500).json({ message: "Gagal mengupdate event." });
   }
 };
