@@ -170,4 +170,41 @@ const sendTicketEmail = async (orderData, ticketData, paymentData) => {
   }
 };
 
-module.exports = { sendTicketEmail };
+const sendCertificateEmail = async (email, name, eventTitle, certLink) => {
+  try {
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px;">
+        <h2 style="color: #344270; text-align: center;">Sertifikat Kehadiran</h2>
+        <p>Halo <b>${name}</b>,</p>
+        <p>Terima kasih telah berpartisipasi dalam acara <b>${eventTitle}</b>.</p>
+        <p>Sebagai bentuk apresiasi, kami menerbitkan E-Sertifikat untuk Anda.</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${certLink}" style="background-color: #50A3FB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+            Lihat & Download Sertifikat
+          </a>
+        </div>
+        
+        <p style="color: #888; font-size: 12px; text-align: center;">
+          Jika tombol tidak berfungsi, salin link ini: <br/>
+          <a href="${certLink}">${certLink}</a>
+        </p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `Sertifikat Anda: ${eventTitle}`,
+      html: htmlContent,
+    });
+    
+    console.log(`Email sertifikat dikirim ke ${email}`);
+    return true;
+  } catch (error) {
+    console.error("Gagal kirim email sertifikat:", error);
+    return false;
+  }
+};
+
+module.exports = { sendTicketEmail, sendCertificateEmail };

@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { eventController } = require("../controllers");
+const { eventController, certificateController } = require("../controllers");
 const { requireUser, requireAdmin } = require("../middlewares");
 
 // ⚠️ URUTAN PENTING: route yang spesifik dulu, baru yang pakai :id
@@ -18,7 +18,7 @@ router.get("/:id", eventController.getEventById);
 router.post("/", requireAdmin, eventController.createEvent);
 
 // PUT /api/events/:id   → update event
-router.put("/:id", requireUser, eventController.updateEvent);
+// router.put("/:id", requireUser, eventController.updateEvent);
 
 // DELETE /api/events/:id → hapus event
 router.delete("/:id", requireUser, eventController.deleteEvent);
@@ -31,6 +31,9 @@ router.delete("/:id/staff/:staffId", requireUser, eventController.removeEventSta
 
 // Staff View (Events assigned to me)
 router.get("/staff/assigned", requireUser, eventController.getStaffAssignedEvents);
+router.post("/:eventId/certificates/issue", requireUser, certificateController.issueCertificates);
+router.get("/certificates/:id/public", certificateController.getCertificatePublic);
+router.put("/:id", requireAdmin, eventController.updateEvent);
 // ...
 
 module.exports = router;

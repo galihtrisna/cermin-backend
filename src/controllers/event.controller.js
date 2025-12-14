@@ -462,3 +462,34 @@ exports.getStaffAssignedEvents = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+exports.updateEvent = async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body; // Data yang dikirim dari frontend
+
+  try {
+    // 1. Lakukan Update di Supabase
+    const { data, error } = await supabase
+      .from("event")
+      .update(updates) // Update sesuai data yang dikirim
+      .eq("id", id)    // Cari berdasarkan ID
+      .select()        // Minta data terbaru setelah update
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      return res.status(404).json({ message: "Event tidak ditemukan saat update." });
+    }
+
+    return res.status(200).json({
+      message: "Event berhasil diupdate",
+      data: data
+    });
+
+  } catch (error) {
+    console.error("Error update event:", error);
+    return res.status(500).json({ message: "Gagal mengupdate event." });
+  }
+};
