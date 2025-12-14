@@ -350,3 +350,115 @@ exports.deleteEvent = async (req, res) => {
     });
   }
 };
+
+// ... kode lama ...
+
+/**
+ * POST /events/:id/staff
+ * Menambahkan staff ke event berdasarkan email
+ */
+exports.addEventStaff = async (req, res) => {
+  try {
+    const { id } = req.params; // Event ID
+    const { email } = req.body;
+    const ownerId = req.userId; // ID Admin yang login
+
+    // 1. Cek kepemilikan event
+    const { data: event } = await supabase.from("event").select("owner_id").eq("id", id).single();
+    if (!event) return res.status(404).json({ message: "Event tidak ditemukan" });
+    
+    // Hanya owner atau superadmin yang boleh add staff
+    if (event.owner_id !== ownerId && req.role !== 'superadmin') {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // 2. Cari User berdasarkan email
+    const { data: user } = await supabase.from("users").select("id, role").eq("email", email).single();
+
+    if (!user) {
+      return res.status(404).json({ message: "Email belum terdaftar di sistem." });
+    }
+
+    if (user.role !== 'staff') {
+      return res.status(400).json({ message: "User tersebut bukan Staff (Role user salah)." });
+    }
+
+    // 3. Masukkan ke tabel event_staff
+    const { error: insertError } = await supabase.from("event_staff").insert({
+      event_id: id,
+      user_id: user.id
+    });
+
+    if (insertError) {
+      if (insertError.code === '23505') { // Unique violation
+        return res.status(400).json({ message: "Staff sudah terdaftar di event ini." });
+      }
+      throw insertError;
+    }
+
+    res.status(201).json({ message: "Staff berhasil ditambahkan." });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+/**
+ * GET /events/:id/staff
+ * List staff di event tertentu
+ */
+exports.getEventStaffList = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from("event_staff")
+      .select("id, user:user_id(id, name, email)")
+      .eq("event_id", id);
+
+    if (error) throw error;
+    res.json({ message: "Success", data });
+  } catch(err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/**
+ * DELETE /events/:id/staff/:staffId
+ * Hapus akses staff (staffId di sini adalah ID tabel event_staff, bukan user_id)
+ */
+exports.removeEventStaff = async (req, res) => {
+  try {
+    const { staffId } = req.params; // ID dari tabel event_staff
+    const { error } = await supabase.from("event_staff").delete().eq("id", staffId);
+    if (error) throw error;
+    res.json({ message: "Staff dihapus dari event." });
+  } catch(err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/**
+ * GET /events/staff/assigned
+ * Mengambil list event di mana user login terdaftar sebagai staff
+ */
+exports.getStaffAssignedEvents = async (req, res) => {
+  try {
+    const userId = req.userId;
+    // Join event_staff -> event
+    const { data, error } = await supabase
+      .from("event_staff")
+      .select("event:event_id(*)") // Mengambil detail event
+      .eq("user_id", userId);
+
+    if (error) throw error;
+
+    // Flatten data
+    const events = data.map(item => item.event);
+
+    res.json({ message: "Success", data: events });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+};

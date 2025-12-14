@@ -23,4 +23,14 @@ router.put("/:id", requireUser, eventController.updateEvent);
 // DELETE /api/events/:id → hapus event
 router.delete("/:id", requireUser, eventController.deleteEvent);
 
+// ...
+// Staff Management (Admin Only)
+router.post("/:id/staff", requireUser, eventController.addEventStaff);
+router.get("/:id/staff", requireUser, eventController.getEventStaffList);
+router.delete("/:id/staff/:staffId", requireUser, eventController.removeEventStaff);
+
+// Staff View (Events assigned to me)
+router.get("/staff/assigned", requireUser, eventController.getStaffAssignedEvents);
+// ...
+
 module.exports = router;

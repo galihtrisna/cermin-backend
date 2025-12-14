@@ -4,6 +4,7 @@ const paymentController = require("./payment.controller");
 const orderController = require("./order.controller")
 const authController = require("./auth.controller")
 const organizerController = require("./organizer.controller")
+const attendanceController = require("./attendance.controller")
 
 module.exports = {
     eventController,
@@ -12,4 +13,5 @@ module.exports = {
     orderController,
     authController,
     organizerController,
+    attendanceController,
 };
