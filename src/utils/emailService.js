@@ -207,4 +207,52 @@ const sendCertificateEmail = async (email, name, eventTitle, certLink) => {
   }
 };
 
-module.exports = { sendTicketEmail, sendCertificateEmail };
+// ... import yang sudah ada
+// Tambahkan ini ke dalam module.exports nanti
+
+/**
+ * Kirim Email Verifikasi Akun
+ * @param {string} email - Email user
+ * @param {string} name - Nama user
+ * @param {string} verifyLink - Link lengkap verifikasi (Frontend URL)
+ */
+const sendVerificationEmail = async (email, name, verifyLink) => {
+  try {
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px;">
+        <h2 style="color: #344270; text-align: center;">Verifikasi Akun Cermin</h2>
+        <p>Halo <b>${name}</b>,</p>
+        <p>Terima kasih telah mendaftar di Cermin Event Platform.</p>
+        <p>Silakan klik tombol di bawah ini untuk memverifikasi email Anda agar akun dapat digunakan:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verifyLink}" style="background-color: #50A3FB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+            Verifikasi Email Saya
+          </a>
+        </div>
+        
+        <p style="color: #888; font-size: 12px; text-align: center;">
+          Link ini hanya berlaku selama 24 jam dan hanya bisa digunakan satu kali.<br/>
+          Jika tombol tidak berfungsi, salin link ini: <br/>
+          <a href="${verifyLink}">${verifyLink}</a>
+        </p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `Verifikasi Akun Cermin`,
+      html: htmlContent,
+    });
+    
+    console.log(`Email verifikasi dikirim ke ${email}`);
+    return true;
+  } catch (error) {
+    console.error("Gagal kirim email verifikasi:", error);
+    return false;
+  }
+};
+
+// Jangan lupa tambahkan ke exports
+module.exports = { sendTicketEmail, sendCertificateEmail, sendVerificationEmail };

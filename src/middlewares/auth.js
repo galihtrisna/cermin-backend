@@ -83,10 +83,12 @@ function requireRoles(allowedRoles = []) {
 // staff/admin/superadmin
 const requireUser = requireRoles(["staff", "admin", "superadmin"]);
 const requireAdmin = requireRoles(["admin", "superadmin"]);
+const requireSuperAdmin = requireRoles(["superadmin"]);
 
 module.exports = {
   requireAuth,
   requireRoles,
   requireUser,
   requireAdmin,
+  requireSuperAdmin,
 };

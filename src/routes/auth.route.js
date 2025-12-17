@@ -14,5 +14,6 @@ router.get("/users/admin", requireAuth, authController.getCurrentUserAdmin);
 
 // set my role
 router.patch("/me/role", requireAuth, authController.setMyRole);
+router.post("/verify-email",authController.verifyEmail);
 
 module.exports = router;

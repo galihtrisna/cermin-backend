@@ -1,6 +1,8 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const supabase = require("../utils/supabase");
+const crypto = require("crypto");
+const { sendVerificationEmail } = require("../utils/emailService");
 
 const JWT_SECRET =
   process.env.SUPABASE_JWT_SECRET ||
@@ -234,5 +236,88 @@ exports.setMyRole = async (req, res) => {
   } catch (error) {
     console.error("setMyRole error:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+exports.register = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    // ... (Validasi input & Cek email exist seperti biasa) ...
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Insert User (Default is_verified = false dari DB)
+    const newUser = await pool.query(
+      `INSERT INTO public.users (name, email, password_hash) 
+       VALUES ($1, $2, $3) RETURNING id, name, email`,
+      [name, email, passwordHash]
+    );
+    
+    const userId = newUser.rows[0].id;
+
+    // --- LOGIKA VERIFIKASI ---
+    // A. Generate Token Random
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    
+    // B. Hash Token untuk disimpan di DB (Keamanan)
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+    // C. Simpan ke tabel email_verifications (Expire 24 jam)
+    await pool.query(
+      `INSERT INTO public.email_verifications (user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '24 hours')`,
+      [userId, tokenHash]
+    );
+
+    // D. Buat Link Verifikasi (Arahkan ke Frontend Next.js)
+    // Pastikan CLIENT_URL ada di .env (misal: http://localhost:3000)
+    const verifyLink = `${process.env.CLIENT_URL}/auth/verify-email?token=${rawToken}&uid=${userId}`;
+
+    // E. Kirim Email
+    await sendVerificationEmail(email, name, verifyLink);
+
+    res.status(201).json({
+      success: true,
+      message: "Registrasi berhasil. Silakan cek email Anda untuk verifikasi.",
+      data: { id: userId, email }
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// 2. VERIFY EMAIL CONTROLLER (BARU)
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { uid, token } = req.body; // Dikirim dari Frontend
+
+    if (!uid || !token) {
+      return res.status(400).json({ success: false, message: "Data tidak lengkap" });
+    }
+
+    // Hash token yang diterima dari user untuk dicocokkan dengan DB
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Panggil RPC Function yang kita buat di Bagian 1
+    const result = await pool.query(
+      `SELECT public.verify_user_email($1, $2) as result`,
+      [uid, tokenHash]
+    );
+
+    const output = result.rows[0].result;
+
+    if (!output.success) {
+      return res.status(400).json({ success: false, message: output.message });
+    }
+
+    res.status(200).json({ success: true, message: output.message });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Gagal memverifikasi email" });
   }
 };

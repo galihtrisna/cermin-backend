@@ -7,6 +7,7 @@ const organizerController = require("./organizer.controller")
 const attendanceController = require("./attendance.controller")
 const certificateController = require("./certificate.controller")
 const uploadController = require("./upload.controller")
+const superadminController = require("./superadmin.controller")
 
 module.exports = {
     eventController,
@@ -17,5 +18,6 @@ module.exports = {
     organizerController,
     attendanceController,
     certificateController,
-    uploadController
+    uploadController,
+    superadminController
 };

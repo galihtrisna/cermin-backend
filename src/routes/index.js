@@ -9,6 +9,7 @@ const organizerRoutes = require("./organizer.route");
 const authRoutes = require("./auth.route");
 const orderRoutes = require("./order.route");
 const uploadRoutes = require("./upload.route");
+const superadminRoutes = require("./superadmin.route");
 const attendanceRoutes = require("./attendance.route"); // Pastikan file controller dibuat
 
 // semua ini akan otomatis berada di bawah prefix /api
@@ -22,5 +23,6 @@ router.use("/", organizerRoutes);
 router.use("/orders", orderRoutes);
 router.use("/attendance", attendanceRoutes);
 router.use("/upload", uploadRoutes);
+router.use("/superadmin", superadminRoutes)
 
 module.exports = router;
