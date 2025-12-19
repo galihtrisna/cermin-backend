@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://10.190.141.34:3000"],
+    origin: ["http://localhost:3000", "http://10.190.141.34:3000", "https://cermin-app.vercel.app"],
     credentials: true,
   })
 );
