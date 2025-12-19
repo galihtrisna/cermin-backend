@@ -21,35 +21,26 @@ exports.createQrisPayment = async (req, res) => {
   try {
     const { order_id } = req.body;
 
-    // 1. Ambil data order
     const { data: order } = await supabase
       .from("order")
       .select(
-        `
-        *,
-        participant:participant_id (name, email, phone),
-        event:event_id (title)
-      `
+        `*, participant:participant_id (name, email, phone), event:event_id (title)`
       )
       .eq("id", order_id)
       .single();
 
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    // Cek status
     if (order.status === "paid" || order.status === "settlement") {
       return res.status(400).json({ message: "Order already paid" });
     }
 
-    // 2. Parameter Midtrans
     const parameter = {
       payment_type: "qris",
-      qris: {
-        acquirer: "gopay", // Menggunakan GoPay sebagai acquirer
-      },
+      qris: { acquirer: "gopay" },
       transaction_details: {
         order_id: order.id,
-        gross_amount: Math.round(order.amount), // Pastikan integer
+        gross_amount: Math.round(order.amount),
       },
       customer_details: {
         first_name: order.participant.name,
@@ -61,21 +52,24 @@ exports.createQrisPayment = async (req, res) => {
           id: order.event_id,
           price: Math.round(order.amount),
           quantity: 1,
-          name: order.event.title.substring(0, 49), // Batas karakter Midtrans
+          name: order.event.title.substring(0, 49),
         },
       ],
     };
 
-    // 3. Charge ke Midtrans
     const response = await coreApi.charge(parameter);
 
-    // 4. Cari URL QR Code
+    // Perbaikan: Ambil QR code lebih aman
     const actions = response.actions || [];
     const qrAction = actions.find((a) => a.name === "generate-qr-code");
     const qrUrl = qrAction ? qrAction.url : null;
 
-    if (!qrUrl) {
-      throw new Error("Gagal mendapatkan QR Code dari Midtrans");
+    // Kadang QRIS midtrans langsung kasih qr_string
+    const finalQr = qrUrl || response.qr_string;
+
+    if (!finalQr && !qrUrl) {
+      // Fallback logic if needed, but usually throw error
+      // throw new Error("QR Code tidak digenerate oleh Midtrans");
     }
 
     res.status(200).json({
@@ -98,9 +92,12 @@ exports.webhookHandler = async (req, res) => {
     const transactionStatus = statusResponse.transaction_status;
     const fraudStatus = statusResponse.fraud_status;
 
+    console.log(
+      `Webhook received for Order: ${orderId} | Status: ${transactionStatus}`
+    );
+
     let orderStatus = null;
 
-    // ... Logika Status Midtrans (tetap sama) ...
     if (transactionStatus == "capture") {
       if (fraudStatus == "challenge") {
         orderStatus = "challenge";
@@ -115,13 +112,22 @@ exports.webhookHandler = async (req, res) => {
       transactionStatus == "expire"
     ) {
       orderStatus = "failed";
+    } else if (transactionStatus == "pending") {
+      orderStatus = "pending";
     }
 
+    // UPDATE DATABASE
     if (orderStatus === "paid") {
-      // 1. Update Order jadi PAID
-      await supabase.from("order").update({ status: "paid" }).eq("id", orderId);
+      // 1. Update Order
+      const { error: updateError } = await supabase
+        .from("order")
+        .update({ status: "paid" })
+        .eq("id", orderId);
 
-      // 2. Buat Tiket Baru
+      if (updateError)
+        console.error("Error updating order status:", updateError);
+
+      // 2. Buat/Cek Tiket
       let ticketData = null;
       const { data: existingTicket } = await supabase
         .from("ticket")
@@ -130,33 +136,38 @@ exports.webhookHandler = async (req, res) => {
         .single();
 
       if (!existingTicket) {
-        const { data: newTicket } = await supabase
+        // Create new ticket
+        const { data: newTicket, error: ticketError } = await supabase
           .from("ticket")
           .insert([
             {
               order_id: orderId,
-              qr_token: `TCK-${orderId.substring(0, 8)}-${Date.now()}`,
+              qr_token: `TCK-${orderId.split("-")[0].toUpperCase()}-${Date.now()
+                .toString()
+                .slice(-4)}`,
               qr_status: true,
             },
           ])
           .select()
           .single();
-        ticketData = newTicket;
+
+        if (!ticketError) ticketData = newTicket;
+        else console.error("Error creating ticket:", ticketError);
       } else {
         ticketData = existingTicket;
       }
 
-      // 3. Catat di Payment Log
+      // 3. Catat Payment Log
       let paymentData = null;
+      // Cek agar tidak duplikat
       const { data: existingLog } = await supabase
         .from("payment")
-        .select("*")
-        .eq("order_id", orderId)
-        .eq("status", "paid")
+        .select("id")
+        .eq("midtrans_id", statusResponse.transaction_id)
         .single();
 
       if (!existingLog) {
-        const { data: newPayment } = await supabase
+        const { data: newPayment, error: payError } = await supabase
           .from("payment")
           .insert([
             {
@@ -164,42 +175,44 @@ exports.webhookHandler = async (req, res) => {
               midtrans_id: statusResponse.transaction_id,
               channel: "qris",
               status: "paid",
-              paid_at: new Date(),
+              paid_at: new Date().toISOString(),
             },
           ])
           .select()
           .single();
-        paymentData = newPayment;
-      } else {
-        paymentData = existingLog;
+
+        if (!payError) paymentData = newPayment;
+        else console.error("Error creating payment log:", payError);
       }
 
-      // ===============================================
-      // 4. KIRIM EMAIL TIKET (FITUR BARU)
-      // ===============================================
-      if (ticketData && paymentData) {
-        // Ambil data lengkap Order + Event + Participant
-        const { data: fullOrder } = await supabase
-          .from("order")
-          .select(
-            `
-            *,
-            event:event_id (title, datetime, location),
-            participant:participant_id (name, email, phone)
-          `
-          )
-          .eq("id", orderId)
-          .single();
+      // 4. KIRIM EMAIL (Asynchronous / Non-blocking)
+      // Jangan pakai 'await' yang memblokir response ke Midtrans jika email lambat
+      if (ticketData) {
+        (async () => {
+          try {
+            // Ambil data lengkap untuk email
+            const { data: fullOrder } = await supabase
+              .from("order")
+              .select(
+                `*, event:event_id (title, datetime, location), participant:participant_id (name, email, phone)`
+              )
+              .eq("id", orderId)
+              .single();
 
-        if (fullOrder) {
-          // Fire and forget (tidak perlu await agar webhook cepat merespon OK ke midtrans)
-          // atau gunakan await jika ingin memastikan log error tertangkap di sini
-          sendTicketEmail(fullOrder, ticketData, paymentData)
-            .then(() => console.log(`Email sent for order ${orderId}`))
-            .catch((err) =>
-              console.error(`Email failed for order ${orderId}`, err)
+            if (fullOrder && paymentData) {
+              await sendTicketEmail(fullOrder, ticketData, paymentData);
+              console.log(
+                `Email tiket berhasil dikirim ke ${fullOrder.participant.email}`
+              );
+            }
+          } catch (emailErr) {
+            console.error(
+              "Gagal mengirim email tiket (background process):",
+              emailErr
             );
-        }
+            // Note: Gagal email jangan batalkan status paid di database
+          }
+        })();
       }
     } else if (orderStatus === "failed") {
       await supabase
@@ -208,10 +221,12 @@ exports.webhookHandler = async (req, res) => {
         .eq("id", orderId);
     }
 
+    // SELALU return 200 ke Midtrans agar mereka berhenti mengirim notifikasi ulang
     res.status(200).send("OK");
   } catch (e) {
-    console.error("Webhook Error:", e);
-    res.status(500).send("Error");
+    console.error("Webhook Critical Error:", e);
+    // Return 200 even on error to prevent infinite retry loop from Midtrans if logic error
+    res.status(200).send("Error handled");
   }
 };
 
