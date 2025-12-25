@@ -109,7 +109,7 @@ exports.getMyEvents = async (req, res) => {
     // Kita filter orders yang statusnya sukses/paid jika perlu, tapi untuk simpel kita hitung semua order
     const { data, error } = await supabase
       .from("event")
-      .select("*, orders(count)") 
+      .select("*, order(count)") 
       .eq("owner_id", userId)
       .order("datetime", { ascending: true });
 
