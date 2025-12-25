@@ -99,22 +99,32 @@ exports.getAllEvent = async (req, res) => {
 
 exports.getMyEvents = async (req, res) => {
   try {
-    const userId = req.userId; // dari middleware auth / JWT
+    const userId = req.userId;
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
+    // [UPDATE] Tambahkan select "orders(count)" untuk menghitung jumlah peserta
+    // Asumsi: Nama tabel order di database adalah 'orders' dan punya foreign key event_id
+    // Kita filter orders yang statusnya sukses/paid jika perlu, tapi untuk simpel kita hitung semua order
     const { data, error } = await supabase
       .from("event")
-      .select("*")
+      .select("*, orders(count)") 
       .eq("owner_id", userId)
       .order("datetime", { ascending: true });
 
     if (error) throw error;
 
+    // Format data agar frontend lebih mudah membacanya
+    const formattedData = data.map((event) => ({
+      ...event,
+      // Supabase mengembalikan array [{ count: n }] untuk relation count
+      participant_count: event.orders ? event.orders[0].count : 0, 
+    }));
+
     res.status(200).json({
       message: "Get my events successfully",
-      data,
+      data: formattedData,
     });
   } catch (error) {
     console.error(error);
