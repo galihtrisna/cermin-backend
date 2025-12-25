@@ -45,6 +45,7 @@ exports.getAllEvent = async (req, res) => {
 
     // 4) Base query + count
     let query = supabase.from("event").select("*", { count: "exact" });
+    query = query.neq("status", "deleted");
 
     // 5) Apply filters
     if (q) {
@@ -111,6 +112,7 @@ exports.getMyEvents = async (req, res) => {
       .from("event")
       .select("*, order(count)") 
       .eq("owner_id", userId)
+      .neq("status", "deleted")
       .order("datetime", { ascending: true });
 
     if (error) throw error;
@@ -323,6 +325,8 @@ exports.updateEvent = async (req, res) => {
  * DELETE /events/:id
  * Hapus event berdasarkan ID
  */
+// src/controllers/event.controller.js
+
 exports.deleteEvent = async (req, res) => {
   try {
     const { id } = req.params;
@@ -346,13 +350,18 @@ exports.deleteEvent = async (req, res) => {
         .json({ message: "Forbidden: Anda bukan pemilik event ini." });
     }
 
-    // 2. Hapus
-    const { error } = await supabase.from("event").delete().eq("id", id);
+    // [UBAH DI SINI] 
+    // Ganti DELETE menjadi UPDATE status 'deleted' (Soft Delete)
+    // Ini menjaga data history order tetap ada, tapi event dianggap hilang.
+    const { error } = await supabase
+      .from("event")
+      .update({ status: "deleted" }) 
+      .eq("id", id);
 
     if (error) throw error;
 
     res.status(200).json({
-      message: "Event deleted successfully",
+      message: "Event deleted successfully (soft delete)",
     });
   } catch (error) {
     console.error(error);
@@ -362,7 +371,6 @@ exports.deleteEvent = async (req, res) => {
     });
   }
 };
-
 // ... kode lama ...
 
 /**
